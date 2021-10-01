@@ -1,0 +1,26 @@
+site_name: Servotester
+#repo_url: https://github.com/cszielke/Servotester
+site_dir: "\\\\raspidbsrv\\web\\html\\doku\\Servotester"
+site_author: Claus Zielke
+nav:
+    - Home: index.md
+theme: 
+    name: material
+    language: de
+    font: false
+markdown_extensions:
+  - pymdownx.extra
+  - admonition
+  - pymdownx.details
+  - pymdownx.arithmatex
+  - pymdownx.tilde
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - markdown.extensions.codehilite:
+      guess_lang: false
+      linenums: true
+
+extra_javascript:
+    - js/extra.js
+    - 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-MML-AM_CHTML'
+    - Disabled_js/MathJax.min.js
