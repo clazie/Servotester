@@ -32,8 +32,8 @@ LiquidCrystal_I2C lcd(PCF8574_ADDR_A21_A11_A01, 4, 5, 6, 16, 11, 12, 13, 14, POS
 // This will be done in setup()
 RotaryEncoder *encoder = nullptr;
 
-#define PIN_IN1 3
-#define PIN_IN2 2
+#define PIN_IN1 2
+#define PIN_IN2 3
 #define PIN_Enter A3
 
 // This interrupt routine will be called on any change of one of the input signals
@@ -42,16 +42,11 @@ void checkPosition()
   encoder->tick(); // just call tick() to check the state.
 }
 
-// These #defines make it easy to set the backlight color
-#define RED 0x1
-#define YELLOW 0x3
-#define GREEN 0x2
-#define TEAL 0x6
-#define BLUE 0x4
-#define VIOLET 0x5
-#define WHITE 0x7
-
-Servo myservo;  // create servo object to control a servo
+Servo servo0;  // create servo object to control a servo
+Servo servo1;  // create servo object to control a servo
+Servo servo2;  // create servo object to control a servo
+Servo servo3;  // create servo object to control a servo
+Servo servo4;  // create servo object to control a servo
 int potpin = A0;  // analog pin used to connect the potentiometer
 int val=1500;    // variable to read the value from the analog pin
 bool increment = true;
@@ -108,8 +103,16 @@ void setup() {
 
   pinMode(PIN_Enter,INPUT_PULLUP);
 
-  myservo.attach(9);  // attaches the servo on pin 9 to the servo object
-  myservo.writeMicroseconds(val);  // set servo to mid-point
+  servo0.attach(9);  // attaches the servo on pin 9 to the servo object
+  servo1.attach(8);  // attaches the servo on pin 9 to the servo object
+  servo2.attach(7);  // attaches the servo on pin 9 to the servo object
+  servo3.attach(6);  // attaches the servo on pin 9 to the servo object
+  servo4.attach(5);  // attaches the servo on pin 9 to the servo object
+  servo0.writeMicroseconds(val);  // set servo to mid-point
+  servo1.writeMicroseconds(val);  // set servo to mid-point
+  servo2.writeMicroseconds(val);  // set servo to mid-point
+  servo3.writeMicroseconds(val);  // set servo to mid-point
+  servo4.writeMicroseconds(val);  // set servo to mid-point
 }
 
 uint8_t i=0;
@@ -131,7 +134,7 @@ void loop() {
     Serial.println(newenter);
     if(enter == 1){
       function++;
-      if(function > 2) function = 0;
+      if(function > 3) function = 0;
     }
     printServoValue(title, val);
     enter = newenter;
@@ -153,7 +156,11 @@ void loop() {
     val += (int)(encoder->getDirection())*5;
     if(val > max_us) val=max_us;
     if(val < min_us) val=min_us;
-    myservo.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo0.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo1.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo2.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo3.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo4.writeMicroseconds(val);                  // sets the servo position according to the scaled value
   }
 
   if(function == 1){
@@ -169,7 +176,11 @@ void loop() {
     else val -= incval;
 
     printServoValue(title, val);
-    myservo.writeMicroseconds(val);  // set servo to mid-point
+    servo0.writeMicroseconds(val);  // set servo to mid-point
+    servo1.writeMicroseconds(val);  // set servo to mid-point
+    servo2.writeMicroseconds(val);  // set servo to mid-point
+    servo3.writeMicroseconds(val);  // set servo to mid-point
+    servo4.writeMicroseconds(val);  // set servo to mid-point
   }
   
   if(function == 2){
@@ -177,7 +188,22 @@ void loop() {
     val = analogRead(potpin);            // reads the value of the potentiometer (value between 0 and 1023)
     val = map(val, 0, 1023, min_us, max_us);     // scale it to use it with the servo (value between 0 and 180)
     printServoValue(title, val);
-    myservo.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo0.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo1.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo2.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo3.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo4.writeMicroseconds(val);                  // sets the servo position according to the scaled value
   }
 
+  if(function == 3){
+    strncpy(title,"Neutral",sizeof(title));
+    val = 1500;
+    printServoValue(title, val);
+    servo0.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo1.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo2.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo3.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    servo4.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+  }
+  delay(1);
 }
