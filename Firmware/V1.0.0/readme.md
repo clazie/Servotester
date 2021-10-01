@@ -6,7 +6,7 @@ Little Hardware and Software to test Servos.
 
 ![ServotesterFront](docs/img/ServotesterBack.png)
 
-![ServotesterFront](docs/img/ServotesterScheet.png)
+![ServotesterFront](docs/img/ServotesterSheet.png)
 
 
 Documentation can be found in subdir **"docs"** and can be build with
