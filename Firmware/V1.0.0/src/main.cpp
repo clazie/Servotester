@@ -36,6 +36,10 @@ RotaryEncoder *encoder = nullptr;
 #define PIN_IN2 3
 #define PIN_Enter A3
 
+static long pos = 0;
+static long lastpos = 0;
+
+
 // This interrupt routine will be called on any change of one of the input signals
 void checkPosition()
 {
@@ -48,13 +52,25 @@ Servo servo2;  // create servo object to control a servo
 Servo servo3;  // create servo object to control a servo
 Servo servo4;  // create servo object to control a servo
 int potpin = A0;  // analog pin used to connect the potentiometer
-int val=1500;    // variable to read the value from the analog pin
+int val=1500;     // variable to read the value from the analog pin
+int oldval=1499;  // force write- and printout
 bool increment = true;
-int function = 0; // witch function is active: 0 = manuell (Tasten), 1 = Sweep, 2 = Poti input for Servo
 int min_us = 800;
 int max_us = 2200;
 int incval = 20;
 char title[17] = "Servotester";
+
+enum efunction: int{
+  fNeutral = 0,
+  fPosition = 1,
+  fMinPos = 2,
+  fMaxPos = 3,
+  fSweep = 4,
+  fEnd = 4
+};
+
+efunction func = fNeutral;
+efunction oldfunc = fEnd;  //force function init
 
 void printServoValue(char* title, int value){
   char valstr[17];
@@ -68,6 +84,14 @@ void printServoValue(char* title, int value){
   lcd.print(title);
   lcd.setCursor(0, 1);
   lcd.print(valstr);
+}
+
+void WriteServoPosition(int milliseconds){
+  servo0.writeMicroseconds(milliseconds);  // set servo to mid-point
+  servo1.writeMicroseconds(milliseconds);  // set servo to mid-point
+  servo2.writeMicroseconds(milliseconds);  // set servo to mid-point
+  servo3.writeMicroseconds(milliseconds);  // set servo to mid-point
+  servo4.writeMicroseconds(milliseconds);  // set servo to mid-point
 }
 
 void setup() {
@@ -95,7 +119,7 @@ void setup() {
   // encoder = new RotaryEncoder(PIN_IN1, PIN_IN2, RotaryEncoder::LatchMode::FOUR0);
 
   // use TWO03 mode when PIN_IN1, PIN_IN2 signals are both LOW or HIGH in latch position.
-  encoder = new RotaryEncoder(PIN_IN1, PIN_IN2, RotaryEncoder::LatchMode::TWO03);
+  encoder = new RotaryEncoder(PIN_IN1, PIN_IN2, RotaryEncoder::LatchMode::FOUR3);
 
   // register interrupt routine
   attachInterrupt(digitalPinToInterrupt(PIN_IN1), checkPosition, CHANGE);
@@ -108,11 +132,10 @@ void setup() {
   servo2.attach(7);  // attaches the servo on pin 9 to the servo object
   servo3.attach(6);  // attaches the servo on pin 9 to the servo object
   servo4.attach(5);  // attaches the servo on pin 9 to the servo object
-  servo0.writeMicroseconds(val);  // set servo to mid-point
-  servo1.writeMicroseconds(val);  // set servo to mid-point
-  servo2.writeMicroseconds(val);  // set servo to mid-point
-  servo3.writeMicroseconds(val);  // set servo to mid-point
-  servo4.writeMicroseconds(val);  // set servo to mid-point
+  
+  printServoValue(title, val);
+  WriteServoPosition(val);
+  delay(1000);
 }
 
 uint8_t i=0;
@@ -123,9 +146,29 @@ void loop() {
   // print the number of seconds since reset:
   // lcd.print(millis()/1000);
   
-  static int pos = 0;
   static boolean enter = 0;
 
+  //Accelleration
+  // Define some constants.
+
+  // the maximum acceleration is 10 times.
+  constexpr float m = 50;
+
+  // at 200ms or slower, there should be no acceleration. (factor 1)
+  constexpr float longCutoff = 150;
+
+  // at 5 ms, we want to have maximum acceleration (factor m)
+  constexpr float shortCutoff = 5;
+
+  // To derive the calc. constants, compute as follows:
+  // On an x(ms) - y(factor) plane resolve a linear formular factor(ms) = a * ms + b;
+  // where  f(4)=10 and f(200)=1
+
+  constexpr float a = (m - 1) / (shortCutoff - longCutoff);
+  constexpr float b = 1 - longCutoff * a;
+  
+  //Read Encoder 
+  lastpos = pos;
   encoder->tick(); // just call tick() to check the state.
 
   boolean newenter = digitalRead(PIN_Enter);
@@ -133,41 +176,146 @@ void loop() {
     Serial.println("enter: ");
     Serial.println(newenter);
     if(enter == 1){
-      function++;
-      if(function > 3) function = 0;
+      func = (efunction)((int)func + 1);
+      if(func > fEnd) func = fNeutral;
     }
     printServoValue(title, val);
     enter = newenter;
   }
 
-  int newPos = encoder->getPosition();
+  long newPos = encoder->getPosition();
   if (pos != newPos) {
+    unsigned long ms = encoder->getMillisBetweenRotations();
+    if(ms > longCutoff){
+      Serial.print("Slow: ");
+      Serial.println(ms);
+    }
+    else{
+    // accelerate when there was a previous rotation in the same direction.
+
+      // do some acceleration using factors a and b
+
+      // limit to maximum acceleration
+      if (ms < shortCutoff) {
+        ms = shortCutoff;
+      }
+
+      float ticksActual_float = a * ms + b;
+      Serial.print("  f= ");
+      Serial.println(ticksActual_float);
+
+      long deltaTicks = (long)ticksActual_float * (newPos - lastpos);
+      Serial.print("  d= ");
+      Serial.println(deltaTicks);
+
+      newPos = newPos + deltaTicks;
+      encoder->setPosition(newPos);
+
+      Serial.print("Fast: ");
+      Serial.println(ms);
+    }
     Serial.print("pos:");
     Serial.print(newPos);
     Serial.print(" dir:");
     Serial.println((int)(encoder->getDirection()));
     pos = newPos;
     printServoValue(title, val);
-  } // if
-
-  //Position
-  if(function == 0){
-    strncpy(title,"Position",sizeof(title));
-    val += (int)(encoder->getDirection())*5;
-    if(val > max_us) val=max_us;
-    if(val < min_us) val=min_us;
-    servo0.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo1.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo2.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo3.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo4.writeMicroseconds(val);                  // sets the servo position according to the scaled value
   }
 
-  if(function == 1){
-    strncpy(title,"Sweep",sizeof(title));
-    if(val <= min_us) increment=true;
-    if(val >= max_us) increment=false;
+  if(func == fNeutral){
+    if(func != oldfunc)
+    {
+      //Init function
+      strncpy(title,"Neutral",sizeof(title));
+      val = 1500;
+      printServoValue(title, val);
+      WriteServoPosition(val);
+
+      oldfunc = func;
+    }
+
+  }
+
+  //Position
+  if(func == fPosition){
+    if(func != oldfunc)
+    {
+      //Init function
+      strncpy(title,"Position",sizeof(title));
+      val = 1500;
+      pos = val;
+      encoder->setPosition(pos);
+
+      printServoValue(title, val);
+      WriteServoPosition(val);
+
+      oldfunc = func;
+    }
     
+    val = pos;
+
+    if(val > max_us){
+      val=max_us;
+      pos = val;
+      encoder->setPosition(pos);      
+    }
+
+    if(val < min_us){
+      val=min_us;
+      pos = val;
+      encoder->setPosition(pos);
+    }
+  }
+
+  if(func == fMinPos){
+    if(func != oldfunc)
+    {
+      //Init function
+      strncpy(title,"Min position",sizeof(title));
+      val = min_us;
+      pos = val;
+      encoder->setPosition(pos);
+      oldfunc = func;
+    }
+    min_us = encoder->getPosition();
+    val = min_us;
+
+  }
+
+  if(func == fMaxPos){
+    if(func != oldfunc)
+    {
+      //Init function
+      strncpy(title,"Max position",sizeof(title));
+      val = max_us;
+      pos = val;
+      encoder->setPosition(pos);
+      oldfunc = func;
+    }
+    max_us = encoder->getPosition();
+    val = max_us;
+
+  }
+
+  if(func == fSweep){
+    if(func != oldfunc)
+    {
+      //Init function
+      strncpy(title,"Sweep",sizeof(title));
+      oldfunc = func;
+    }
+    
+    if(val <= min_us){
+      increment=true;
+      val = min_us;
+    }
+    
+    if(val >= max_us){
+      increment=false;
+      val = max_us;
+    }
+    
+    //Get Speed
     incval += (int)(encoder->getDirection())*5;
     if(incval > 100) incval=100;
     if(incval < 5) incval=5;
@@ -175,35 +323,14 @@ void loop() {
     if(increment) val += incval;
     else val -= incval;
 
-    printServoValue(title, val);
-    servo0.writeMicroseconds(val);  // set servo to mid-point
-    servo1.writeMicroseconds(val);  // set servo to mid-point
-    servo2.writeMicroseconds(val);  // set servo to mid-point
-    servo3.writeMicroseconds(val);  // set servo to mid-point
-    servo4.writeMicroseconds(val);  // set servo to mid-point
+    delay(1);
   }
   
-  if(function == 2){
-    strncpy(title,"Poti",sizeof(title));
-    val = analogRead(potpin);            // reads the value of the potentiometer (value between 0 and 1023)
-    val = map(val, 0, 1023, min_us, max_us);     // scale it to use it with the servo (value between 0 and 180)
+  if(val != oldval){
+    //Write out Servo positions
     printServoValue(title, val);
-    servo0.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo1.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo2.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo3.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo4.writeMicroseconds(val);                  // sets the servo position according to the scaled value
+    WriteServoPosition(val);
+    oldval = val;
   }
 
-  if(function == 3){
-    strncpy(title,"Neutral",sizeof(title));
-    val = 1500;
-    printServoValue(title, val);
-    servo0.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo1.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo2.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo3.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-    servo4.writeMicroseconds(val);                  // sets the servo position according to the scaled value
-  }
-  delay(1);
 }
