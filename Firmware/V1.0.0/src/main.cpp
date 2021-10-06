@@ -21,8 +21,8 @@ struct Config {
   char name[10];
 };
 
-#define COLUMS           20
-#define ROWS             4
+#define COLUMS           16
+#define ROWS             2
 
 #define LCD_SPACE_SYMBOL 0x20  //space symbol from the LCD ROM, see p.9 of GDM2004D datasheet
 
@@ -52,13 +52,15 @@ Servo servo2;  // create servo object to control a servo
 Servo servo3;  // create servo object to control a servo
 Servo servo4;  // create servo object to control a servo
 int potpin = A0;  // analog pin used to connect the potentiometer
-int val=1500;     // variable to read the value from the analog pin
-int oldval=1499;  // force write- and printout
+static int val=1500;     // variable to read the value from the analog pin
+static int oldval=1499;  // force write- and printout
 bool increment = true;
 int min_us = 800;
 int max_us = 2200;
 int incval = 20;
 char title[17] = "Servotester";
+
+volatile int timer2Counter;  //Timer-Variable
 
 enum efunction: int{
   fNeutral = 0,
@@ -92,6 +94,11 @@ void WriteServoPosition(int milliseconds){
   servo2.writeMicroseconds(milliseconds);  // set servo to mid-point
   servo3.writeMicroseconds(milliseconds);  // set servo to mid-point
   servo4.writeMicroseconds(milliseconds);  // set servo to mid-point
+}
+
+ISR(TIMER2_OVF_vect) {
+  TCNT2 = timer2Counter;
+  printServoValue(title, val);
 }
 
 void setup() {
@@ -135,6 +142,22 @@ void setup() {
   
   printServoValue(title, val);
   WriteServoPosition(val);
+
+  // Setup Timer
+    cli();//stop all interrupts
+  TCCR2A = 0;  //delete all bits
+  TCCR2B = 0;  //delete all bits
+  timer2Counter = 0;
+  TCNT2 = timer2Counter;//preload timer
+  
+  TCCR2B |= (1 << CS10);
+  TCCR2B |= (1 << CS12);//Sets Prescaler to 1024
+  TIMSK2 |= (1 << TOIE2);// enables timer overflow interrups
+  
+  sei();//allow interrupts
+
+
+
   delay(1000);
 }
 
@@ -179,7 +202,7 @@ void loop() {
       func = (efunction)((int)func + 1);
       if(func > fEnd) func = fNeutral;
     }
-    printServoValue(title, val);
+    //printServoValue(title, val);
     enter = newenter;
   }
 
@@ -219,7 +242,7 @@ void loop() {
     Serial.print(" dir:");
     Serial.println((int)(encoder->getDirection()));
     pos = newPos;
-    printServoValue(title, val);
+    //printServoValue(title, val);
   }
 
   if(func == fNeutral){
@@ -228,7 +251,7 @@ void loop() {
       //Init function
       strncpy(title,"Neutral",sizeof(title));
       val = 1500;
-      printServoValue(title, val);
+      //printServoValue(title, val);
       WriteServoPosition(val);
 
       oldfunc = func;
@@ -246,7 +269,7 @@ void loop() {
       pos = val;
       encoder->setPosition(pos);
 
-      printServoValue(title, val);
+      //printServoValue(title, val);
       WriteServoPosition(val);
 
       oldfunc = func;
@@ -328,7 +351,7 @@ void loop() {
   
   if(val != oldval){
     //Write out Servo positions
-    printServoValue(title, val);
+    //printServoValue(title, val);
     WriteServoPosition(val);
     oldval = val;
   }
