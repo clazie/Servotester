@@ -39,28 +39,22 @@ RotaryEncoder *encoder = nullptr;
 static long pos = 0;
 static long lastpos = 0;
 
-
-// This interrupt routine will be called on any change of one of the input signals
-void checkPosition()
-{
-  encoder->tick(); // just call tick() to check the state.
-}
-
 Servo servo0;  // create servo object to control a servo
 Servo servo1;  // create servo object to control a servo
 Servo servo2;  // create servo object to control a servo
 Servo servo3;  // create servo object to control a servo
 Servo servo4;  // create servo object to control a servo
 int potpin = A0;  // analog pin used to connect the potentiometer
-static int val=1500;     // variable to read the value from the analog pin
+volatile int val=1500;     // variable to read the value from the analog pin
 static int oldval=1499;  // force write- and printout
 bool increment = true;
 int min_us = 800;
 int max_us = 2200;
-int incval = 20;
-char title[17] = "Servotester";
+volatile long incval = 20;
+volatile char title[17] = "Servotester";
 
 volatile int timer2Counter;  //Timer-Variable
+volatile long timer2Cnt;  //Timer-Variable
 
 enum efunction: int{
   fNeutral = 0,
@@ -74,31 +68,59 @@ enum efunction: int{
 efunction func = fNeutral;
 efunction oldfunc = fEnd;  //force function init
 
-void printServoValue(char* title, int value){
+void printServoValue(){
   char valstr[17];
 
-  int pc = int((long)((value - 1500) * 100 / 500));;
-
-  snprintf(valstr, sizeof(valstr), "%4dms   %+4d%%  ", value, pc);
+  int pc = int((long)((val - 1500) * 100 / 500));;
 
   lcd.clear();
   lcd.setCursor(0,0);
-  lcd.print(title);
-  lcd.setCursor(0, 1);
+  snprintf(valstr, sizeof(valstr), "%s", title);
   lcd.print(valstr);
+  lcd.setCursor(0, 1);
+  snprintf(valstr, sizeof(valstr), "%4dms   %+4d%%  ", val, pc);
+  lcd.print(valstr);
+  Serial.println(valstr);
 }
 
-void WriteServoPosition(int milliseconds){
-  servo0.writeMicroseconds(milliseconds);  // set servo to mid-point
-  servo1.writeMicroseconds(milliseconds);  // set servo to mid-point
-  servo2.writeMicroseconds(milliseconds);  // set servo to mid-point
-  servo3.writeMicroseconds(milliseconds);  // set servo to mid-point
-  servo4.writeMicroseconds(milliseconds);  // set servo to mid-point
+void WriteServoPosition(){
+  servo0.writeMicroseconds(val);  // set servo to mid-point
+  servo1.writeMicroseconds(val);  // set servo to mid-point
+  servo2.writeMicroseconds(val);  // set servo to mid-point
+  servo3.writeMicroseconds(val);  // set servo to mid-point
+  servo4.writeMicroseconds(val);  // set servo to mid-point
+}
+
+// This interrupt routine will be called on any change of one of the input signals
+void checkPosition()
+{
+  encoder->tick(); // just call tick() to check the state.
 }
 
 ISR(TIMER2_OVF_vect) {
   TCNT2 = timer2Counter;
-  printServoValue(title, val);
+  timer2Cnt--;
+  if(timer2Cnt <= 0)
+  {
+    timer2Cnt = incval;
+    if(func == fSweep){
+
+      if(increment) val++;
+      else val--;
+    
+      if(val <= min_us){
+        increment=true;
+        val = min_us;
+      }
+      
+      if(val >= max_us){
+        increment=false;
+        val = max_us;
+      }
+    }
+
+    WriteServoPosition();
+  }
 }
 
 void setup() {
@@ -132,7 +154,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_IN1), checkPosition, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_IN2), checkPosition, CHANGE);
 
-  pinMode(PIN_Enter,INPUT_PULLUP);
+  pinMode(PIN_Enter, INPUT_PULLUP);
 
   servo0.attach(9);  // attaches the servo on pin 9 to the servo object
   servo1.attach(8);  // attaches the servo on pin 9 to the servo object
@@ -140,14 +162,15 @@ void setup() {
   servo3.attach(6);  // attaches the servo on pin 9 to the servo object
   servo4.attach(5);  // attaches the servo on pin 9 to the servo object
   
-  printServoValue(title, val);
-  WriteServoPosition(val);
+  printServoValue();
+  WriteServoPosition();
 
   // Setup Timer
-    cli();//stop all interrupts
+  cli();//stop all interrupts
   TCCR2A = 0;  //delete all bits
   TCCR2B = 0;  //delete all bits
-  timer2Counter = 0;
+  timer2Counter = 200;
+  timer2Cnt = incval;
   TCNT2 = timer2Counter;//preload timer
   
   TCCR2B |= (1 << CS10);
@@ -155,8 +178,6 @@ void setup() {
   TIMSK2 |= (1 << TOIE2);// enables timer overflow interrups
   
   sei();//allow interrupts
-
-
 
   delay(1000);
 }
@@ -171,6 +192,19 @@ void loop() {
   
   static boolean enter = 0;
 
+  boolean newenter = digitalRead(PIN_Enter);
+  if(enter != newenter){
+    Serial.println("enter: ");
+    Serial.println(newenter);
+    if(enter == 1){
+      func = (efunction)((int)func + 1);
+      if(func > fEnd) func = fNeutral;
+    }
+    printServoValue();
+    enter = newenter;
+  }
+
+
   //Accelleration
   // Define some constants.
 
@@ -178,7 +212,7 @@ void loop() {
   constexpr float m = 50;
 
   // at 200ms or slower, there should be no acceleration. (factor 1)
-  constexpr float longCutoff = 150;
+  constexpr float longCutoff = 200;
 
   // at 5 ms, we want to have maximum acceleration (factor m)
   constexpr float shortCutoff = 5;
@@ -193,18 +227,6 @@ void loop() {
   //Read Encoder 
   lastpos = pos;
   encoder->tick(); // just call tick() to check the state.
-
-  boolean newenter = digitalRead(PIN_Enter);
-  if(enter != newenter){
-    Serial.println("enter: ");
-    Serial.println(newenter);
-    if(enter == 1){
-      func = (efunction)((int)func + 1);
-      if(func > fEnd) func = fNeutral;
-    }
-    //printServoValue(title, val);
-    enter = newenter;
-  }
 
   long newPos = encoder->getPosition();
   if (pos != newPos) {
@@ -242,21 +264,19 @@ void loop() {
     Serial.print(" dir:");
     Serial.println((int)(encoder->getDirection()));
     pos = newPos;
-    //printServoValue(title, val);
+    printServoValue();
   }
 
   if(func == fNeutral){
     if(func != oldfunc)
     {
       //Init function
-      strncpy(title,"Neutral",sizeof(title));
+      strncpy((char*)title,"Neutral",sizeof(title));
       val = 1500;
-      //printServoValue(title, val);
-      WriteServoPosition(val);
+      printServoValue();
 
       oldfunc = func;
     }
-
   }
 
   //Position
@@ -264,13 +284,11 @@ void loop() {
     if(func != oldfunc)
     {
       //Init function
-      strncpy(title,"Position",sizeof(title));
+      strncpy((char*)title,"Position",sizeof(title));
+      
       val = 1500;
       pos = val;
       encoder->setPosition(pos);
-
-      //printServoValue(title, val);
-      WriteServoPosition(val);
 
       oldfunc = func;
     }
@@ -294,27 +312,28 @@ void loop() {
     if(func != oldfunc)
     {
       //Init function
-      strncpy(title,"Min position",sizeof(title));
+      strncpy((char*)title,"Min position",sizeof(title));
       val = min_us;
       pos = val;
       encoder->setPosition(pos);
       oldfunc = func;
     }
+
     min_us = encoder->getPosition();
     val = min_us;
-
   }
 
   if(func == fMaxPos){
     if(func != oldfunc)
     {
       //Init function
-      strncpy(title,"Max position",sizeof(title));
+      strncpy((char*)title,"Max position",sizeof(title));
       val = max_us;
       pos = val;
       encoder->setPosition(pos);
       oldfunc = func;
     }
+
     max_us = encoder->getPosition();
     val = max_us;
 
@@ -324,35 +343,43 @@ void loop() {
     if(func != oldfunc)
     {
       //Init function
-      strncpy(title,"Sweep",sizeof(title));
+      incval = 20l;
+      snprintf((char*)title,sizeof(title),"Sweep Speed: %2ld",incval);
+      encoder->setPosition((long)incval*10);
       oldfunc = func;
     }
     
-    if(val <= min_us){
-      increment=true;
-      val = min_us;
-    }
-    
-    if(val >= max_us){
-      increment=false;
-      val = max_us;
-    }
-    
     //Get Speed
-    incval += (int)(encoder->getDirection())*5;
-    if(incval > 100) incval=100;
-    if(incval < 5) incval=5;
+    long oldincval = incval;
+    long tmp = encoder->getPosition();
+    
+    if(tmp > 600){
+      Serial.print(F(">60: "));
+      Serial.println(tmp);
+      tmp=600l; 
+      encoder->setPosition(tmp);
+      pos = tmp;
+    }
+    
+    if(tmp < 0){
+      Serial.print(F("<0: "));
+      Serial.println(tmp);
+      tmp=0l; 
+      encoder->setPosition(tmp);
+      pos = tmp;
+    }
 
-    if(increment) val += incval;
-    else val -= incval;
+    incval = tmp/10;
 
-    delay(1);
+    if(incval != oldincval){
+      snprintf((char*)title,sizeof(title),"Sweep Speed: %2ld",incval);
+    }
+
   }
   
   if(val != oldval){
-    //Write out Servo positions
-    //printServoValue(title, val);
-    WriteServoPosition(val);
+    printServoValue();
+    delay(100);
     oldval = val;
   }
 
